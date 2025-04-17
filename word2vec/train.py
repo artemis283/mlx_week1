@@ -103,19 +103,29 @@ target, context, negs = generate_training_data(token_ids, vocab_size=len(word2id
 dataset = SkipGramDataset(target, context, negs)
 dataloader = DataLoader(dataset, batch_size=512, shuffle=True)
 
-for epoch in range(20): 
+# Early stopping variables
+best_loss = float('inf')
+patience = 3
+epochs_without_improvement = 0
+max_epochs = 50  
+
+loss_history = []
+
+for epoch in range(max_epochs):
     total_loss = 0
+    model.train()
+
     for target, context, negs in dataloader:
         target = target.to(device)
         context = context.to(device)
 
-        # Generate new negative samples for the batch
+        # Generate new negative samples for this batch
         negs = get_negative_samples(
             batch_size=target.size(0),
             vocab_size=len(word2id),
             word_freq=word_freq,
             word2id=word2id,
-            num_negatives=5  # or whatever number you prefer
+            num_negatives=5
         ).to(device)
 
         optimizer.zero_grad()
@@ -124,15 +134,23 @@ for epoch in range(20):
         optimizer.step()
 
         total_loss += loss.item()
-    print(f"Epoch {epoch+1} - Loss: {total_loss:.4f}")
 
+    avg_loss = total_loss / len(dataloader)
+    loss_history.append(avg_loss)
+    print(f"Epoch {epoch + 1} - Loss: {avg_loss:.4f}")
 
-embeddings = model.target_embeddings.weight.data.cpu()
-with open("embeddings.txt", "w") as f:
-    for idx, vector in enumerate(embeddings):
-        word = id2word.get(idx, f"UNK_{idx}")
-        vec_str = " ".join(map(str, vector.tolist()))
-        f.write(f"{word} {vec_str}\n")
+    # Save best model so far
+    if len(loss_history) == 1 or avg_loss < min(loss_history[:-1]):
+        torch.save(model.state_dict(), 'best_skipgram_model.pth')
+
+    # Early stopping: if no improvement in last 3 epochs
+    if len(loss_history) >= 4:
+        if all(loss_history[i] >= loss_history[i - 1] for i in range(-3, 0)):
+            print(f"Stopping early at epoch {epoch + 1}. Loss hasn't improved in the last 3 epochs.")
+            break
+
+# Save the weights of the model
+torch.save(model.state_dict(), 'skipgram_model.pth')
 
 def get_similar_words(word, word2id, embeddings, top_k=10):
     # Check if the word is in the vocabulary
