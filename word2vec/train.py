@@ -7,6 +7,26 @@ from model import SkipGram_Model
 import random
 import torch.nn.functional as F
 import torch.optim as optim
+from tokenize_words import word_freq
+import numpy as np
+from tokenize_words import id2word
+
+# Random seed
+seed_value = 42
+
+# For CPU
+random.seed(seed_value)
+np.random.seed(seed_value)
+torch.manual_seed(seed_value)
+
+# For GPU (if you're using CUDA)
+torch.cuda.manual_seed(seed_value)
+torch.cuda.manual_seed_all(seed_value)  # If you have multiple GPUs
+
+# Ensures deterministic behavior (important for reproducibility)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
 
 def generate_training_data(token_ids, vocab_size, window_size=2, num_negatives=5):
     targets, contexts, negatives = [], [], []
@@ -31,6 +51,30 @@ def generate_training_data(token_ids, vocab_size, window_size=2, num_negatives=5
             negatives.append(negative_ids)
 
     return targets, contexts, negatives
+
+# Negative sampling based on frequency of word 
+def get_negative_samples(batch_size, vocab_size, word_freq, word2id, num_negatives=5):
+    """
+    Generate negative samples using unigram distribution raised to the 3/4 power (as in Mikolov et al.).
+    """
+    # Convert frequencies to numpy array aligned with word IDs
+    frequencies = np.zeros(vocab_size)
+    for word, idx in word2id.items():
+        frequencies[idx] = word_freq[word]
+
+    # Apply 3/4 power to frequencies for smoothing
+    unigram_dist = frequencies ** 0.75
+    unigram_dist /= unigram_dist.sum()
+
+    # Sample negative word IDs using the distribution
+    negative_samples = np.random.choice(
+        vocab_size,
+        size=(batch_size, num_negatives),
+        p=unigram_dist
+    )
+
+    return torch.LongTensor(negative_samples)
+
 
 class SkipGramDataset(Dataset):
     def __init__(self, targets, contexts, negatives):
@@ -59,12 +103,20 @@ target, context, negs = generate_training_data(token_ids, vocab_size=len(word2id
 dataset = SkipGramDataset(target, context, negs)
 dataloader = DataLoader(dataset, batch_size=512, shuffle=True)
 
-for epoch in range(40):  # Or more
+for epoch in range(20): 
     total_loss = 0
     for target, context, negs in dataloader:
         target = target.to(device)
         context = context.to(device)
-        negs = negs.to(device)
+
+        # Generate new negative samples for the batch
+        negs = get_negative_samples(
+            batch_size=target.size(0),
+            vocab_size=len(word2id),
+            word_freq=word_freq,
+            word2id=word2id,
+            num_negatives=5  # or whatever number you prefer
+        ).to(device)
 
         optimizer.zero_grad()
         loss = model(target, context, negs)
@@ -76,6 +128,11 @@ for epoch in range(40):  # Or more
 
 
 embeddings = model.target_embeddings.weight.data.cpu()
+with open("embeddings.txt", "w") as f:
+    for idx, vector in enumerate(embeddings):
+        word = id2word.get(idx, f"UNK_{idx}")
+        vec_str = " ".join(map(str, vector.tolist()))
+        f.write(f"{word} {vec_str}\n")
 
 def get_similar_words(word, word2id, embeddings, top_k=10):
     # Check if the word is in the vocabulary
@@ -104,5 +161,3 @@ similar_words = get_similar_words(target_word, word2id, model.target_embeddings.
 print(f"Most similar words to '{target_word}':")
 for word, score in similar_words:
     print(f"  {word}: {score:.4f}")
-
-

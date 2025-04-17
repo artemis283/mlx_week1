@@ -1,6 +1,7 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 
 class SkipGram_Model(nn.Module):
     """Implementation of the Skip-Gram model"""
@@ -8,6 +9,10 @@ class SkipGram_Model(nn.Module):
         super(SkipGram_Model, self).__init__()
         self.target_embeddings = nn.Embedding(vocab_size, embedding_dim) 
         self.context_embeddings = nn.Embedding(vocab_size, embedding_dim) # context
+
+        initrange = 0.5 / embedding_dim  # initialising weights at a small value
+        self.target_embeddings.weight.data.uniform_(-initrange, initrange)
+        self.context_embeddings.weight.data.uniform_(-initrange, initrange)
 
     def forward(self, target_words, context_words, negative_samples = None):
         target_embeds = self.target_embeddings(target_words) 

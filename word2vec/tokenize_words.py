@@ -1,14 +1,20 @@
+import sys
 from datasets import load_dataset
 import torch
 import torch.nn.functional as F
 import re
 from collections import Counter
+import random
+import math 
 
 ds = load_dataset("afmck/text8")
 raw_text = ds["train"][0]["text"]  # obtaining raw text from database
 
 # First, convert the raw text into a list format for the tokenize function
 corpus = [raw_text]  # Wrap in a list as tokenize expects a list of texts
+
+# Subsampling threshold
+t = 1e-5
 
 def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
     """
@@ -32,9 +38,8 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
         
         # Handle contractions and special terms
         text = re.sub(r"([a-z])'([a-z])", r"\1\2", text)  # Replace don't with dont
-        text = re.sub(r"c\+\+", "cplusplus", text)  # Preserve C++
-        
-        # Remove non-alphabetic characters (except spaces)
+
+         # Remove non-alphabetic characters (except spaces)
         text = re.sub(r"[^a-z\s]", "", text)
         
         # Split into tokens
@@ -99,6 +104,22 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
     
     return all_processed_tokens, phrases
 
+# Adding sub sampling 
+def subsample_words(corpus, word_freq, t):
+    subsampled_corpus = []
+    for word in corpus:
+        f_w = word_freq.get(word, 0)  # Get the frequency of the word, default to 0 if not found
+        if f_w == 0:
+            continue
+         
+        f_w = word_freq[word]
+        P_w = 1 - math.sqrt(t/f_w)
+        if random.random() < P_w:
+            subsampled_corpus.append(word)
+    
+    return subsampled_corpus
+        
+
 def assign_ids(tokens):
     # Create a set to track words we have seen so far
     seen_words = set()
@@ -116,7 +137,10 @@ def assign_ids(tokens):
 
 # Correct function call and handling of return values
 tokenised_corpus, phrases = tokenize(corpus)
-word2id, id2word = assign_ids(tokenised_corpus)
+word_freq = Counter(tokenised_corpus)
+subsampled_corpus = subsample_words(tokenised_corpus, word_freq, t)
+
+word2id, id2word = assign_ids(subsampled_corpus)
 
 # Print the first 10 word-ID pairs from word2id
 print("First 10 word-ID pairs:")
@@ -131,7 +155,6 @@ sorted_phrases = sorted(phrases.items(), key=lambda x: x[1], reverse=True)
 for (word1, word2), score in sorted_phrases[:10]:
     combined = f"{word1}_{word2}"
     print(f"Phrase: {combined}, Score: {score:.4f}")
-
 
 
 
