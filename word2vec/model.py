@@ -32,3 +32,22 @@ class SkipGram_Model(nn.Module):
         loss = - (positive_loss + negative_loss)
 
         return loss.mean()
+
+
+class Regressor(torch.nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.seq = torch.nn.Sequential(
+      torch.nn.Linear(in_features=128, out_features=64),
+      torch.nn.ReLU(),
+      torch.nn.Linear(in_features=64, out_features=32),
+      torch.nn.ReLU(),
+      torch.nn.Linear(in_features=32, out_features=16),
+      torch.nn.ReLU(),
+      torch.nn.Linear(in_features=16, out_features=1),
+    )
+
+  def forward(self, inpt):
+    out = self.seq(inpt)
+    return out
+

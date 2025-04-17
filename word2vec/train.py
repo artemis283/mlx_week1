@@ -107,7 +107,7 @@ dataloader = DataLoader(dataset, batch_size=512, shuffle=True)
 best_loss = float('inf')
 patience = 3
 epochs_without_improvement = 0
-max_epochs = 50  
+max_epochs = 20  
 
 loss_history = []
 
@@ -151,6 +151,7 @@ for epoch in range(max_epochs):
 
 # Save the weights of the model
 torch.save(model.state_dict(), 'skipgram_model.pth')
+print("model saved")
 
 def get_similar_words(word, word2id, embeddings, top_k=10):
     # Check if the word is in the vocabulary
@@ -179,3 +180,5 @@ similar_words = get_similar_words(target_word, word2id, model.target_embeddings.
 print(f"Most similar words to '{target_word}':")
 for word, score in similar_words:
     print(f"  {word}: {score:.4f}")
+
+

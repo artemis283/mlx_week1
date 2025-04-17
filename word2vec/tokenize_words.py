@@ -7,14 +7,19 @@ from collections import Counter
 import random
 import math 
 
-ds = load_dataset("afmck/text8")
+"""ds = load_dataset("afmck/text8")
 raw_text = ds["train"][0]["text"]  # obtaining raw text from database
 
+
 # First, convert the raw text into a list format for the tokenize function
-corpus = [raw_text]  # Wrap in a list as tokenize expects a list of texts
+corpus = [raw_text]  # Wrap in a list as tokenize expects a list of texts"""
 
 # Subsampling threshold
-t = 1e-5
+t = 1e-3
+
+with open("text8_plus_hn2.txt", "r", encoding="utf-8") as f:
+    raw_text = f.read()
+corpus = [raw_text] 
 
 def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
     """
@@ -155,6 +160,16 @@ sorted_phrases = sorted(phrases.items(), key=lambda x: x[1], reverse=True)
 for (word1, word2), score in sorted_phrases[:10]:
     combined = f"{word1}_{word2}"
     print(f"Phrase: {combined}, Score: {score:.4f}")
+
+'''
+# Preprocessing hacker news
+hn_tokens, _ = tokenize(hacker_news_corpus)
+hn_freq = Counter(hn_tokens)
+hn_subsampled = subsample_words(hn_tokens, hn_freq, t)
+word2id_hn, id2word_hn = assign_ids(hn_subsampled)
+
+hn_token_ids = [word2id_hn[word] for word in hn_subsampled if word in word2id_hn]'''
+
 
 
 
