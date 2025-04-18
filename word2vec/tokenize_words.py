@@ -5,21 +5,22 @@ import torch.nn.functional as F
 import re
 from collections import Counter
 import random
-import math 
+import math
+import json
+import os
 
-"""ds = load_dataset("afmck/text8")
+# Set random seed for reproducibility
+random.seed(42)
+
+print("Loading dataset...")
+ds = load_dataset("artemisweb/test-dataset")
 raw_text = ds["train"][0]["text"]  # obtaining raw text from database
 
-
 # First, convert the raw text into a list format for the tokenize function
-corpus = [raw_text]  # Wrap in a list as tokenize expects a list of texts"""
+corpus = [raw_text]  # Wrap in a list as tokenize expects a list of texts
 
-# Subsampling threshold
-t = 1e-3
-
-with open("text8_plus_hn2.txt", "r", encoding="utf-8") as f:
-    raw_text = f.read()
-corpus = [raw_text] 
+# Subsampling threshold (same as in your tokenizer)
+t = 1e-5
 
 def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
     """
@@ -35,6 +36,7 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
         processed_corpus: List of tokenized texts with phrases joined
         phrases: Dictionary of detected phrases with their scores
     """
+    print("Tokenizing corpus...")
     # Step 1: Initial tokenization of all texts
     tokenized_texts = []
     for text in corpus:
@@ -52,10 +54,12 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
         tokenized_texts.append(tokens)
     
     # Step 2: Count all tokens in the corpus
+    print("Counting tokens...")
     all_tokens = [token for text in tokenized_texts for token in text]
     token_counts = Counter(all_tokens)
     
     # Step 3: Filter out rare words
+    print("Filtering rare words...")
     filtered_texts = []
     for tokens in tokenized_texts:
         filtered = [token for token in tokens if token_counts[token] >= min_count]
@@ -63,6 +67,7 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
             filtered_texts.append(filtered)
     
     # Step 4: Count bigrams for phrase detection
+    print("Detecting phrases...")
     bigram_counts = Counter()
     for tokens_list in filtered_texts:  # Use filtered texts
         for i in range(len(tokens_list) - 1):
@@ -85,6 +90,7 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
             phrases[bigram] = score
     
     # Step 6: Replace phrases in the texts
+    print("Processing phrases in text...")
     processed_texts = []
     for tokens in filtered_texts:
         i = 0
@@ -111,6 +117,7 @@ def tokenize(corpus, min_count=8, phrase_min_count=100, phrase_threshold=15):
 
 # Adding sub sampling 
 def subsample_words(corpus, word_freq, t):
+    print("Subsampling words...")
     subsampled_corpus = []
     for word in corpus:
         f_w = word_freq.get(word, 0)  # Get the frequency of the word, default to 0 if not found
@@ -124,8 +131,8 @@ def subsample_words(corpus, word_freq, t):
     
     return subsampled_corpus
         
-
 def assign_ids(tokens):
+    print("Assigning word IDs...")
     # Create a set to track words we have seen so far
     seen_words = set()
     # Create word2id mapping based on order of appearance
@@ -140,19 +147,61 @@ def assign_ids(tokens):
     
     return word2id, id2word
 
-# Correct function call and handling of return values
+def save_to_json(word2id, phrases, filename="tokenizer_data.json"):
+    """
+    Save the word2id mapping and phrases to a JSON file.
+    
+    Args:
+        word2id: Dictionary mapping words to their IDs
+        phrases: Dictionary of detected phrases with their scores
+        filename: Name of the JSON file to save
+    """
+    # Convert phrases keys to strings for JSON serialization
+    serializable_phrases = {f"{word1}_{word2}": score for (word1, word2), score in phrases.items()}
+    
+    # Create a dictionary with all the data
+    data = {
+        "word2id": word2id,
+        "phrases": serializable_phrases,
+        "vocab_size": len(word2id),
+        "has_unk_token": "<unk>" in word2id,
+    }
+    
+    if "<unk>" in word2id:
+        data["unk_id"] = word2id["<unk>"]
+    
+    # Save to JSON file
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    
+    print(f"Tokenizer data saved to {filename}")
+    print(f"Total vocabulary size: {len(word2id)}")
+    return filename
+
+# Execute the tokenization pipeline
+print("Starting tokenization pipeline...")
 tokenised_corpus, phrases = tokenize(corpus)
 word_freq = Counter(tokenised_corpus)
 subsampled_corpus = subsample_words(tokenised_corpus, word_freq, t)
 
+# Assign IDs to words
 word2id, id2word = assign_ids(subsampled_corpus)
 
-# Print the first 10 word-ID pairs from word2id
-print("First 10 word-ID pairs:")
+# Add <unk> token if it doesn't exist
+if "<unk>" not in word2id:
+    word2id["<unk>"] = len(word2id)
+    id2word[len(id2word)] = "<unk>"
+    print("Added <unk> token to vocabulary")
+
+# Print some statistics
+print("\nVocabulary Statistics:")
+print(f"Total vocabulary size: {len(word2id)}")
+print(f"Total phrases detected: {len(phrases)}")
+
+# Print first 10 word-ID pairs
+print("\nFirst 10 word-ID pairs:")
 for word, id_val in list(word2id.items())[:10]:
     print(f"Word: {word} ID: {id_val}")
-
-print(f"Vocabulary size: {len(word2id)}")  # Number of unique words in the dataset
 
 # Print top 10 phrases by score
 print("\nTop 10 phrases by score:")
@@ -161,14 +210,25 @@ for (word1, word2), score in sorted_phrases[:10]:
     combined = f"{word1}_{word2}"
     print(f"Phrase: {combined}, Score: {score:.4f}")
 
-'''
-# Preprocessing hacker news
-hn_tokens, _ = tokenize(hacker_news_corpus)
-hn_freq = Counter(hn_tokens)
-hn_subsampled = subsample_words(hn_tokens, hn_freq, t)
-word2id_hn, id2word_hn = assign_ids(hn_subsampled)
+# Save to JSON file
+output_file = save_to_json(word2id, phrases)
+print(f"\nTokenizer data successfully saved to {output_file}")
 
-hn_token_ids = [word2id_hn[word] for word in hn_subsampled if word in word2id_hn]'''
+# Additional info for using the saved file
+print("\nTo load this file in your regressor script:")
+print("""
+import json
+
+# Load the tokenizer data
+with open('tokenizer_data.json', 'r', encoding='utf-8') as f:
+    tokenizer_data = json.load(f)
+
+# Extract the word2id mapping
+word2id = tokenizer_data['word2id']
+vocab_size = tokenizer_data['vocab_size']
+
+# Now you can use this word2id with your skip-gram model
+""")
 
 
 
